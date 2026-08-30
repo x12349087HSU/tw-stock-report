@@ -8,6 +8,7 @@ APP_PASSWORD（環境變數或 .streamlit/secrets.toml 皆可），則不會要�
 """
 from __future__ import annotations
 
+import base64
 import os
 import sys
 from pathlib import Path
@@ -90,11 +91,31 @@ if result is not None:
     # 若結果只存在區域變數裡，下載當下這個結果就會消失，畫面看起來像「重置」了，
     # 誤以為要重新整理/重啟才能再查下一檔。存進 session_state 後，這裡的內容就能
     # 在任何後續互動（含下載按鈕本身）之後繼續顯示，可以直接在上方輸入新代號再查一次。
-    st.download_button(
-        "下載 PDF 報告",
-        data=result.pdf_bytes,
-        file_name=f"{result.data.identity.stock_id}_{result.data.identity.company_name}.pdf",
-        mime="application/pdf",
+    pdf_filename = f"{result.data.identity.stock_id}_{result.data.identity.company_name}.pdf"
+
+    col_open, col_download = st.columns(2)
+    with col_open:
+        # 用 st.link_button（會以新分頁開啟）而非直接觸發下載，是因為 iOS Safari
+        # 對「下載」型連結常常不會真的存檔，而是用 Quick Look 全螢幕預覽把目前
+        # 這個分頁整個蓋掉，使用者會找不到路回到查詢畫面。開新分頁的話，原本這個
+        # 查詢頁面會完整保留在背後（或分頁列表中），切換回來就能繼續查下一檔。
+        pdf_base64 = base64.b64encode(result.pdf_bytes).decode("ascii")
+        st.link_button(
+            "🌐 用瀏覽器開啟（新分頁）",
+            url=f"data:application/pdf;base64,{pdf_base64}",
+            use_container_width=True,
+        )
+    with col_download:
+        st.download_button(
+            "📥 下載 PDF 到裝置",
+            data=result.pdf_bytes,
+            file_name=pdf_filename,
+            mime="application/pdf",
+            use_container_width=True,
+        )
+    st.caption(
+        "手機（尤其 iPhone）建議用「用瀏覽器開啟」：會在新分頁顯示 PDF，這個查詢頁面不會不見，"
+        "看完切換回這個分頁即可繼續查下一檔。「下載」則是把檔案直接存到裝置裡。"
     )
 
     st.subheader("資料來源狀態")
