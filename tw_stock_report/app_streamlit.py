@@ -9,6 +9,15 @@ APP_PASSWORD（環境變數或 .streamlit/secrets.toml 皆可），則不會要�
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
+
+# Streamlit Community Cloud 執行時不會像本機 `python -m streamlit run` 一樣把
+# 專案根目錄（tw_stock_report/ 的上一層）放進 sys.path，導致 `import tw_stock_report.*`
+# 失敗（ModuleNotFoundError）。這裡明確把根目錄加入 sys.path，確保任何執行方式都能正確匯入。
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
 import streamlit as st
 
