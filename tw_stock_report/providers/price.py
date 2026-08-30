@@ -14,18 +14,23 @@ def _parse_finmind_price(rows: list[dict]) -> list[PriceBar]:
     bars: list[PriceBar] = []
     for row in rows:
         try:
-            bars.append(
-                PriceBar(
-                    trade_date=date.fromisoformat(row["date"]),
-                    open=float(row["open"]),
-                    high=float(row["max"]),
-                    low=float(row["min"]),
-                    close=float(row["close"]),
-                    volume=int(row.get("Trading_Volume", 0) or 0),
-                )
+            bar = PriceBar(
+                trade_date=date.fromisoformat(row["date"]),
+                open=float(row["open"]),
+                high=float(row["max"]),
+                low=float(row["min"]),
+                close=float(row["close"]),
+                volume=int(row.get("Trading_Volume", 0) or 0),
             )
         except (KeyError, ValueError, TypeError):
             continue
+        # FinMind 偶爾會回傳單日 close=0（或負值）的異常資料（例如觀察到 2317
+        # 在 2025-07-30 前後一天都是正常股價，該日卻是 0），這種資料點在
+        # 股價圖與本益比河流圖上會畫出一條直插到底的假崩盤線，明顯是資料
+        # 錯誤而非真實股價，直接跳過該筆，不納入計算。
+        if bar.close <= 0 or bar.open <= 0 or bar.high <= 0 or bar.low <= 0:
+            continue
+        bars.append(bar)
     bars.sort(key=lambda b: b.trade_date)
     return bars
 

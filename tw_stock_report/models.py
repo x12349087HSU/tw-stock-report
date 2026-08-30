@@ -146,6 +146,7 @@ class ReportData:
     generated_at: date
 
     price_bars_1y: list[PriceBar] = field(default_factory=list)
+    price_bars_extended: list[PriceBar] = field(default_factory=list)  # 涵蓋 1 年以上，供均線暖身/本益比河流圖使用
     price_high_1y: Optional[PriceBar] = None
     price_low_1y: Optional[PriceBar] = None
 
@@ -155,6 +156,8 @@ class ReportData:
     eps_rows_8q: list[EpsRow] = field(default_factory=list)
     eps_rows_annual: list[EpsRow] = field(default_factory=list)
     eps_summary_text: str = ""
+
+    quarterly_financials: list[QuarterFinancials] = field(default_factory=list)  # 供本益比河流圖使用
 
     industry_news: list[NewsItem] = field(default_factory=list)
     stock_news: list[NewsItem] = field(default_factory=list)

@@ -18,6 +18,7 @@ from reportlab.platypus import (
 
 from .. import config
 from ..charts.eps_chart import render_eps_chart
+from ..charts.pe_river_chart import render_pe_river_chart
 from ..charts.price_chart import render_price_chart
 from ..charts.revenue_chart import render_revenue_chart
 from ..models import ChecklistItem, ReportData
@@ -109,10 +110,10 @@ def _build_price_section(styles, data: ReportData) -> list:
         flow.append(Spacer(1, 10))
         return flow
 
-    periods = [(3, "近 3 個月收盤價與成交量"), (6, "近 6 個月收盤價與成交量"), (12, "近 1 年收盤價與成交量")]
-    for months, title in periods:
+    periods = [(3, "近 3 個月收盤價與成交量", False), (6, "近 6 個月收盤價與成交量", False), (12, "近 1 年收盤價與成交量（含 5/10/20/60 日均線）", True)]
+    for months, title, show_ma in periods:
         try:
-            png = render_price_chart(bars, months, title)
+            png = render_price_chart(bars, months, title, show_ma=show_ma, full_bars=data.price_bars_extended)
             flow.append(_image_flowable(png, CONTENT_WIDTH))
             flow.append(Spacer(1, 6))
         except ValueError:
@@ -128,6 +129,21 @@ def _build_price_section(styles, data: ReportData) -> list:
                 styles["Body"],
             )
         )
+    flow.append(Spacer(1, 4))
+
+    flow.append(Paragraph("本益比河流圖", styles["SubHeading"]))
+    try:
+        pe_png = render_pe_river_chart(data.price_bars_extended, data.quarterly_financials)
+        flow.append(_image_flowable(pe_png, CONTENT_WIDTH))
+        flow.append(
+            Paragraph(
+                "灰藍色帶由淺至深分別為歷史本益比（股價／近四季 TTM EPS）的 10%/30%/50%/70%/90% 分位數，"
+                "黑線為實際收盤價；分位數以現有可取得的財報與股價期間計算，僅供參考，非官方統一算法。",
+                styles["Caption"],
+            )
+        )
+    except ValueError:
+        flow.append(_fallback_box(styles, "財報季數或股價歷史資料不足，暫無法繪製本益比河流圖。"))
     flow.append(Spacer(1, 10))
     return flow
 

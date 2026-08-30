@@ -5,7 +5,7 @@ CLI 與 Streamlit 都只呼叫這裡的 generate_report，確保兩個介面行�
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 from . import config
 from .analysis import checklist as checklist_engine
@@ -70,6 +70,13 @@ def _eps_summary(rows) -> str:
     return "".join(parts)
 
 
+def _slice_last_months(bars: list, months: int) -> list:
+    if not bars:
+        return []
+    cutoff = bars[-1].trade_date - timedelta(days=months * 31)
+    return [b for b in bars if b.trade_date >= cutoff]
+
+
 def _annual_eps(rows: list[EpsRow]) -> list[EpsRow]:
     by_year: dict[int, list[EpsRow]] = {}
     for r in rows:
@@ -110,12 +117,17 @@ def generate_report(user_input: str) -> ReportResult:
     data = ReportData(identity=identity, generated_at=date.today())
     statuses: list[SourceStatus] = []
 
-    price_result = price_provider.get_price_history(identity, months=13)
+    # 抓約 3.3 年的股價：近一年圖表本身只需要 12 個月，但 60 日均線需要往前多抓
+    # 幾個月「暖身」資料才能從展示區間第一天就有數值，本益比河流圖則需要橫跨
+    # 多年的股價區間才有意義，兩者共用同一份延伸期間的資料，只是切法不同。
+    price_result = price_provider.get_price_history(identity, months=40)
     statuses.append(SourceStatus("股價", price_result.source_name, price_result.ok, price_result.error))
     if price_result.ok:
-        data.price_bars_1y = price_result.data
-        data.price_high_1y = max(price_result.data, key=lambda b: b.high)
-        data.price_low_1y = min(price_result.data, key=lambda b: b.low)
+        data.price_bars_extended = price_result.data
+        data.price_bars_1y = _slice_last_months(price_result.data, 12)
+        recent_bars = data.price_bars_1y or price_result.data
+        data.price_high_1y = max(recent_bars, key=lambda b: b.high)
+        data.price_low_1y = min(recent_bars, key=lambda b: b.low)
 
     revenue_result = revenue_provider.get_monthly_revenue(identity, months=24)
     statuses.append(SourceStatus("月營收", revenue_result.source_name, revenue_result.ok, revenue_result.error))
@@ -181,6 +193,7 @@ def generate_report(user_input: str) -> ReportResult:
         balance_result.data or [],
         cashflow_result.data or [],
     )
+    data.quarterly_financials = fundamentals_result.data or []
 
     data.source_statuses = statuses
 
