@@ -1,7 +1,9 @@
 """CJK 字型偵測與 ReportLab 註冊。
 
-優先使用 Windows 內建「微軟正黑體」，不需額外下載字型檔。找不到任何可用字型時
-會在報告產生前丟出清楚的例外，而不是默默產出亂碼/方框的 PDF。
+優先使用本機 Windows 內建「微軟正黑體」（畫質最佳、有獨立粗體）；找不到的環境
+（例如雲端 Linux 主機）則退回專案內建的 Noto Sans TC 字型檔，確保本機開發與雲端
+部署（如 Streamlit Community Cloud）都能正常顯示中文，不會因平台不同而產出
+亂碼/方框 PDF。所有候選字型都找不到時才丟出例外。
 """
 from __future__ import annotations
 
@@ -13,11 +15,15 @@ from reportlab.pdfbase.ttfonts import TTFont
 FONT_NAME_REGULAR = "TWReportCJK"
 FONT_NAME_BOLD = "TWReportCJK-Bold"
 
+_BUNDLED_FONT = str(Path(__file__).resolve().parent.parent / "assets" / "fonts" / "NotoSansTC-Regular.ttf")
+
 _CANDIDATE_FONTS = [
     # (regular, bold, subfont_index)
     (r"C:\Windows\Fonts\msjh.ttc", r"C:\Windows\Fonts\msjhbd.ttc", 0),
     (r"C:\Windows\Fonts\mingliu.ttc", r"C:\Windows\Fonts\mingliu.ttc", 0),
     (r"C:\Windows\Fonts\kaiu.ttf", r"C:\Windows\Fonts\kaiu.ttf", None),
+    # 跨平台備援：專案內建字型（Noto Sans TC，OFL 授權，隨程式一起部署）
+    (_BUNDLED_FONT, _BUNDLED_FONT, None),
 ]
 
 _registered = False
@@ -60,6 +66,6 @@ def register_cjk_fonts() -> tuple[str, str]:
             continue
 
     raise NoCjkFontFoundError(
-        "找不到可用的中文字型（已嘗試微軟正黑體/細明體/標楷體）。"
-        "請確認 Windows 字型目錄或安裝一套中文字型後再產生報告。"
+        "找不到可用的中文字型（已嘗試微軟正黑體/細明體/標楷體，以及專案內建的 Noto Sans TC）。"
+        "請確認字型檔是否存在於 tw_stock_report/assets/fonts/ 目錄下。"
     )
