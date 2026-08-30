@@ -26,21 +26,35 @@ import streamlit.components.v1 as components
 
 from tw_stock_report.identity import IdentityNotFound
 from tw_stock_report.report import generate_report
-from tw_stock_report.static_icon_patch import patch_streamlit_static_assets
 
 _ICON_DIR = _PROJECT_ROOT / "tw_stock_report" / "assets" / "icons"
 _FAVICON_PATH = _ICON_DIR / "favicon-256.png"
-
-# iOS「加入主畫面」讀的是伺服器最原始送出的 index.html（在任何 JS 執行之前），
-# 而 Streamlit 原生只支援用 page_icon 在瀏覽器分頁「JS 執行之後」動態換 favicon，
-# 完全沒有設定 <link rel="apple-touch-icon"> 的機制。這裡直接覆寫 Streamlit 套件
-# 內建的靜態檔案，確保從第一個 byte 開始送出的就已經是我們自己的圖示。
-patch_streamlit_static_assets(_ICON_DIR)
+_APPLE_TOUCH_ICON_PATH = _ICON_DIR / "apple-touch-icon.png"
 
 st.set_page_config(
     page_title="台股投資分析 PDF 報告產生器",
     page_icon=str(_FAVICON_PATH) if _FAVICON_PATH.exists() else "📈",
 )
+
+if _APPLE_TOUCH_ICON_PATH.exists():
+    # 原本想直接覆寫 Streamlit 套件內建的 index.html 讓標籤從第一個 byte 就送出，
+    # 但 Streamlit Community Cloud 上該套件目錄是唯讀的（Permission denied），這條
+    # 路走不通。改回用 st.markdown(unsafe_allow_html=True) 插入 <link> 標籤 ——
+    # 這裡渲染的內容會直接進到主頁面本身的 DOM（不像 components.html 是獨立的
+    # sandboxed iframe，還要透過 window.parent 才碰得到外層頁面，那個方式在
+    # Streamlit Cloud 上是否會被額外的安全性限制擋下也還沒把握），是目前在不修改
+    # 伺服器檔案的前提下，可以做到的最直接方式。
+    #
+    # 已知限制：這個標籤仍然是在頁面 JS 執行後才出現在 DOM 裡，並非伺服器最原始
+    # 送出的 HTML 就有。如果 iOS 讀取的時機比這個更早，圖示仍可能抓不到 —— 這是
+    # Streamlit 平台本身的限制，並非程式邏輯錯誤。若持續無法更新，也請確認是否為
+    # iOS 對舊網址的圖示快取（可到 設定 > Safari > 進階 > 網站資料，搜尋該網址
+    # 並移除，而不是只刪除主畫面捷徑），這是 iOS 已知會發生的行為。
+    _apple_icon_b64 = base64.b64encode(_APPLE_TOUCH_ICON_PATH.read_bytes()).decode("ascii")
+    st.markdown(
+        f'<link rel="apple-touch-icon" href="data:image/png;base64,{_apple_icon_b64}" />',
+        unsafe_allow_html=True,
+    )
 
 
 def _get_configured_password() -> str | None:
