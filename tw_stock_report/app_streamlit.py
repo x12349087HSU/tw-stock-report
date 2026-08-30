@@ -59,34 +59,51 @@ if not _require_password():
     st.stop()
 
 st.title("台股投資分析 PDF 報告產生器")
-st.caption("輸入台股代號或名稱，彙整公開資料並產出中文 PDF 投資分析報告。")
+st.caption("輸入台股代號或名稱，彙整公開資料並產出中文 PDF 投資分析報告。可重複查詢，不需要重新整理或重啟頁面。")
+
+if "report_result" not in st.session_state:
+    st.session_state["report_result"] = None  # 上一次成功產生的 ReportResult
+if "report_error" not in st.session_state:
+    st.session_state["report_error"] = None
 
 stock_input = st.text_input("股票代號或名稱", placeholder="例如：2330 或 台積電")
 generate_clicked = st.button("產生報告", type="primary", disabled=not stock_input.strip())
 
 if generate_clicked:
+    # 先清掉舊結果，避免產生失敗時畫面還殘留上一次的報告，讓人誤以為是這次的結果
+    st.session_state["report_result"] = None
+    st.session_state["report_error"] = None
     with st.spinner("彙整公開資料並產生報告中，可能需要一些時間..."):
         try:
-            result = generate_report(stock_input.strip())
+            st.session_state["report_result"] = generate_report(stock_input.strip())
         except IdentityNotFound as exc:
-            st.error(str(exc))
+            st.session_state["report_error"] = str(exc)
+
+if st.session_state["report_error"]:
+    st.error(st.session_state["report_error"])
+
+result = st.session_state["report_result"]
+if result is not None:
+    st.success(f"報告已產生：{result.data.identity.company_name}（{result.data.identity.stock_id}）")
+
+    # 用 st.session_state 保存結果，是因為下載按鈕本身點擊也會觸發整頁重新執行；
+    # 若結果只存在區域變數裡，下載當下這個結果就會消失，畫面看起來像「重置」了，
+    # 誤以為要重新整理/重啟才能再查下一檔。存進 session_state 後，這裡的內容就能
+    # 在任何後續互動（含下載按鈕本身）之後繼續顯示，可以直接在上方輸入新代號再查一次。
+    st.download_button(
+        "下載 PDF 報告",
+        data=result.pdf_bytes,
+        file_name=f"{result.data.identity.stock_id}_{result.data.identity.company_name}.pdf",
+        mime="application/pdf",
+    )
+
+    st.subheader("資料來源狀態")
+    for status in result.data.source_statuses:
+        label = f"{status.module}：{status.source_used}"
+        if status.ok:
+            st.success(label + (f"（{status.message}）" if status.message else ""))
         else:
-            st.success(f"報告已產生：{result.data.identity.company_name}（{result.data.identity.stock_id}）")
-
-            st.download_button(
-                "下載 PDF 報告",
-                data=result.pdf_bytes,
-                file_name=f"{result.data.identity.stock_id}_{result.data.identity.company_name}.pdf",
-                mime="application/pdf",
-            )
-
-            st.subheader("資料來源狀態")
-            for status in result.data.source_statuses:
-                label = f"{status.module}：{status.source_used}"
-                if status.ok:
-                    st.success(label + (f"（{status.message}）" if status.message else ""))
-                else:
-                    st.warning(label + (f"（{status.message}）" if status.message else ""))
+            st.warning(label + (f"（{status.message}）" if status.message else ""))
 
 st.divider()
 st.caption("所有投資相關內容僅供參考，不構成任何投資建議，使用者應自行評估風險。")
