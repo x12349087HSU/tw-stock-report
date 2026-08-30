@@ -27,7 +27,39 @@ import streamlit.components.v1 as components
 from tw_stock_report.identity import IdentityNotFound
 from tw_stock_report.report import generate_report
 
-st.set_page_config(page_title="台股投資分析 PDF 報告產生器", page_icon="📈")
+_ICON_DIR = _PROJECT_ROOT / "tw_stock_report" / "assets" / "icons"
+_FAVICON_PATH = _ICON_DIR / "favicon-256.png"
+_APPLE_TOUCH_ICON_PATH = _ICON_DIR / "apple-touch-icon.png"
+
+st.set_page_config(
+    page_title="台股投資分析 PDF 報告產生器",
+    page_icon=str(_FAVICON_PATH) if _FAVICON_PATH.exists() else "📈",
+)
+
+if _APPLE_TOUCH_ICON_PATH.exists():
+    # iOS「加入主畫面」的圖示認的是 <link rel="apple-touch-icon">，Streamlit 本身沒有
+    # 提供設定這個 head 標籤的 API，因此用 JS 動態插入。components.html 的內容跑在
+    # 一個獨立的 iframe 裡，所以要透過 window.parent.document 才能改到外層真正的頁面
+    # （而不是改到這個 iframe 自己的 head，那樣對外層頁面完全沒有效果）。
+    _apple_icon_b64 = base64.b64encode(_APPLE_TOUCH_ICON_PATH.read_bytes()).decode("ascii")
+    components.html(
+        f"""
+        <script>
+        (function() {{
+          try {{
+            const doc = window.parent.document;
+            if (!doc.querySelector('link[rel="apple-touch-icon"]')) {{
+              const link = doc.createElement('link');
+              link.rel = 'apple-touch-icon';
+              link.href = 'data:image/png;base64,{_apple_icon_b64}';
+              doc.head.appendChild(link);
+            }}
+          }} catch (e) {{}}
+        }})();
+        </script>
+        """,
+        height=0,
+    )
 
 
 def _get_configured_password() -> str | None:
