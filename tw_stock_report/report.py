@@ -8,10 +8,14 @@ from dataclasses import dataclass
 from datetime import date
 
 from . import config
+from .analysis import checklist as checklist_engine
 from .identity import IdentityNotFound, resolve
 from .models import EpsRow, ReportData, SourceStatus
 from .pdf.builder import build_pdf
+from .providers import balance_sheet as balance_sheet_provider
+from .providers import cash_flow as cash_flow_provider
 from .providers import eps as eps_provider
+from .providers import fundamentals as fundamentals_provider
 from .providers import price as price_provider
 from .providers import revenue as revenue_provider
 from .providers.news import aggregator as news_aggregator
@@ -155,6 +159,28 @@ def generate_report(user_input: str) -> ReportResult:
     )
     if rating_errors:
         data.warnings.extend(rating_errors)
+
+    fundamentals_result = fundamentals_provider.get_quarterly_financials(identity.stock_id, years_back=3)
+    balance_result = balance_sheet_provider.get_quarterly_balance_sheet(identity.stock_id, years_back=3)
+    cashflow_result = cash_flow_provider.get_quarterly_cash_flow(identity.stock_id, years_back=3)
+
+    checklist_ok = fundamentals_result.ok and balance_result.ok and cashflow_result.ok
+    checklist_errors = [
+        r.error for r in (fundamentals_result, balance_result, cashflow_result) if not r.ok
+    ]
+    statuses.append(
+        SourceStatus(
+            "基本面自檢表",
+            "FinMind（季度財報）",
+            checklist_ok,
+            "；".join(checklist_errors) if checklist_errors else "",
+        )
+    )
+    data.checklist_items = checklist_engine.evaluate_checklist(
+        fundamentals_result.data or [],
+        balance_result.data or [],
+        cashflow_result.data or [],
+    )
 
     data.source_statuses = statuses
 

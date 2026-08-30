@@ -17,6 +17,12 @@ COLOR_TEXT = colors.HexColor("#1a1a1a")
 COLOR_MUTED = colors.HexColor("#666666")
 COLOR_WARN_BG = colors.HexColor("#fff6e5")
 COLOR_TABLE_ALT = colors.HexColor("#f5f7fa")
+COLOR_PASS = colors.HexColor("#1a7a3c")
+COLOR_PASS_BG = colors.HexColor("#e9f7ee")
+COLOR_FAIL = colors.HexColor("#a33")
+COLOR_FAIL_BG = colors.HexColor("#fdecec")
+COLOR_UNKNOWN = colors.HexColor("#8a6d00")
+COLOR_UNKNOWN_BG = colors.HexColor("#fbf3d9")
 
 
 def build_stylesheet() -> StyleSheet1:
@@ -36,6 +42,12 @@ def build_stylesheet() -> StyleSheet1:
     styles.add(ParagraphStyle("Disclaimer", fontName=bold, fontSize=9, leading=13, textColor=colors.HexColor("#8a5a00"), alignment=TA_CENTER))
     styles.add(ParagraphStyle("SourceStatusOk", fontName=regular, fontSize=8, leading=11, textColor=colors.HexColor("#1a7a3c")))
     styles.add(ParagraphStyle("SourceStatusFail", fontName=regular, fontSize=8, leading=11, textColor=colors.HexColor("#a33"), ))
+    styles.add(ParagraphStyle("TierHeading", fontName=bold, fontSize=10.5, leading=14, textColor=COLOR_TEXT, spaceBefore=10, spaceAfter=4))
+    styles.add(ParagraphStyle("ChecklistItemName", fontName=bold, fontSize=8.8, leading=12, textColor=COLOR_TEXT))
+    styles.add(ParagraphStyle("ChecklistDetail", fontName=regular, fontSize=8.3, leading=11.5, textColor=COLOR_MUTED))
+    styles.add(ParagraphStyle("ChecklistPass", fontName=bold, fontSize=9, leading=12, textColor=COLOR_PASS, alignment=TA_CENTER))
+    styles.add(ParagraphStyle("ChecklistFail", fontName=bold, fontSize=9, leading=12, textColor=COLOR_FAIL, alignment=TA_CENTER))
+    styles.add(ParagraphStyle("ChecklistUnknown", fontName=bold, fontSize=9, leading=12, textColor=COLOR_UNKNOWN, alignment=TA_CENTER))
     return styles
 
 

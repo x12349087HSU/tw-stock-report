@@ -20,12 +20,15 @@ from .. import config
 from ..charts.eps_chart import render_eps_chart
 from ..charts.price_chart import render_price_chart
 from ..charts.revenue_chart import render_revenue_chart
-from ..models import ReportData
+from ..models import ChecklistItem, ReportData
 from .fonts import register_cjk_fonts
 from .styles import (
     COLOR_ACCENT,
     COLOR_BRAND,
+    COLOR_FAIL_BG,
+    COLOR_PASS_BG,
     COLOR_TABLE_ALT,
+    COLOR_UNKNOWN_BG,
     COLOR_WARN_BG,
     basic_info_table_style,
     build_stylesheet,
@@ -268,6 +271,92 @@ def _build_rating_section(styles, data: ReportData) -> list:
     return flow
 
 
+def _checklist_result_cell(styles, item: ChecklistItem) -> Paragraph:
+    if item.passed is True:
+        return Paragraph("通過", styles["ChecklistPass"])
+    if item.passed is False:
+        return Paragraph("未通過", styles["ChecklistFail"])
+    return Paragraph("資料不足", styles["ChecklistUnknown"])
+
+
+def _build_checklist_section(styles, data: ReportData) -> list:
+    flow: list = [_section_heading(styles, "七、核心成長動能基本面自檢表"), Spacer(1, 6)]
+    items = data.checklist_items
+    if not items:
+        flow.append(_fallback_box(styles, "季度財報資料暫時無法取得（FinMind 財報/資產負債表/現金流量表皆失敗），此區塊略過。"))
+        flow.append(Spacer(1, 10))
+        return flow
+
+    passed_count = sum(1 for i in items if i.passed is True)
+    failed_count = sum(1 for i in items if i.passed is False)
+    unknown_count = sum(1 for i in items if i.passed is None)
+    flow.append(
+        Paragraph(
+            f"共 {len(items)} 項指標：通過 {passed_count} 項、未通過 {failed_count} 項、資料不足 {unknown_count} 項。",
+            styles["Body"],
+        )
+    )
+    flow.append(
+        Paragraph(
+            "以下指標之公式與門檻依常見財務分析慣例訂定（如 ROE/ROA 採近 8 季 TTM、"
+            "現金轉換率＝營業現金流／稅後淨利、利息保障倍數＝(稅前淨利＋利息費用)／利息費用），"
+            "各項判定依據已列於「說明」欄，非官方或單一標準公式，僅供參考。",
+            styles["Caption"],
+        )
+    )
+
+    regular, bold = register_cjk_fonts()
+    tiers_seen: list[int] = []
+    for item in items:
+        if item.tier not in tiers_seen:
+            tiers_seen.append(item.tier)
+
+    for tier in tiers_seen:
+        tier_items = [i for i in items if i.tier == tier]
+        flow.append(Paragraph(tier_items[0].tier_name, styles["TierHeading"]))
+
+        rows = [["項目", "結果", "說明"]]
+        row_colors = [COLOR_TABLE_ALT]
+        for item in tier_items:
+            rows.append(
+                [
+                    Paragraph(item.name, styles["ChecklistItemName"]),
+                    _checklist_result_cell(styles, item),
+                    Paragraph(item.detail, styles["ChecklistDetail"]),
+                ]
+            )
+            if item.passed is True:
+                row_colors.append(COLOR_PASS_BG)
+            elif item.passed is False:
+                row_colors.append(COLOR_FAIL_BG)
+            else:
+                row_colors.append(COLOR_UNKNOWN_BG)
+
+        table = Table(rows, colWidths=[5.2 * cm, 2.6 * cm, CONTENT_WIDTH - 7.8 * cm])
+        style = TableStyle(
+            [
+                ("FONTNAME", (0, 0), (-1, -1), regular),
+                ("FONTNAME", (0, 0), (-1, 0), bold),
+                ("FONTSIZE", (0, 0), (-1, 0), 8.5),
+                ("BACKGROUND", (0, 0), (-1, 0), COLOR_TABLE_ALT),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+        for row_idx, bg in enumerate(row_colors):
+            style.add("BACKGROUND", (0, row_idx), (-1, row_idx), bg)
+        table.setStyle(style)
+        flow.append(table)
+        flow.append(Spacer(1, 8))
+
+    flow.append(Spacer(1, 2))
+    return flow
+
+
 def _build_disclaimer_section(styles) -> list:
     t = Table([[Paragraph(config.DISCLAIMER_TEXT, styles["Disclaimer"])]], colWidths=[CONTENT_WIDTH])
     t.setStyle(
@@ -328,6 +417,7 @@ def build_pdf(data: ReportData) -> bytes:
     story.extend(_build_eps_section(styles, data))
     story.extend(_build_news_section(styles, data))
     story.extend(_build_rating_section(styles, data))
+    story.extend(_build_checklist_section(styles, data))
     story.extend(_build_disclaimer_section(styles))
     story.extend(_build_source_status_section(styles, data))
 

@@ -53,6 +53,44 @@ class EpsRow:
 
 
 @dataclass
+class QuarterFinancials:
+    year: int
+    quarter: int
+    revenue: float
+    gross_profit: float
+    operating_income: float
+    pretax_income: float
+    net_income: float  # 歸屬於母公司業主淨利
+    eps: float
+
+
+@dataclass
+class QuarterBalance:
+    year: int
+    quarter: int
+    total_assets: float
+    liabilities: float
+    equity: float  # 歸屬於母公司業主權益
+
+
+@dataclass
+class QuarterCashFlow:
+    year: int
+    quarter: int
+    operating_cash_flow: float
+    interest_expense: float
+
+
+@dataclass
+class ChecklistItem:
+    tier: int
+    tier_name: str
+    name: str
+    passed: Optional[bool]  # None = 資料不足，無法判定
+    detail: str
+
+
+@dataclass
 class NewsItem:
     title: str
     publish_date: Optional[date]
@@ -124,6 +162,8 @@ class ReportData:
     stock_highlight_text: str = ""
 
     ratings: list[RatingItem] = field(default_factory=list)
+
+    checklist_items: list[ChecklistItem] = field(default_factory=list)
 
     source_statuses: list[SourceStatus] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
