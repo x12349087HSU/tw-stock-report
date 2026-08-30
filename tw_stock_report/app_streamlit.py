@@ -9,6 +9,7 @@ APP_PASSWORD（環境變數或 .streamlit/secrets.toml 皆可），則不會要�
 from __future__ import annotations
 
 import base64
+import json
 import os
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from tw_stock_report.identity import IdentityNotFound
 from tw_stock_report.report import generate_report
@@ -92,30 +94,68 @@ if result is not None:
     # 誤以為要重新整理/重啟才能再查下一檔。存進 session_state 後，這裡的內容就能
     # 在任何後續互動（含下載按鈕本身）之後繼續顯示，可以直接在上方輸入新代號再查一次。
     pdf_filename = f"{result.data.identity.stock_id}_{result.data.identity.company_name}.pdf"
+    pdf_base64 = base64.b64encode(result.pdf_bytes).decode("ascii")
 
-    col_open, col_download = st.columns(2)
-    with col_open:
-        # 用 st.link_button（會以新分頁開啟）而非直接觸發下載，是因為 iOS Safari
-        # 對「下載」型連結常常不會真的存檔，而是用 Quick Look 全螢幕預覽把目前
-        # 這個分頁整個蓋掉，使用者會找不到路回到查詢畫面。開新分頁的話，原本這個
-        # 查詢頁面會完整保留在背後（或分頁列表中），切換回來就能繼續查下一檔。
-        pdf_base64 = base64.b64encode(result.pdf_bytes).decode("ascii")
-        st.link_button(
-            "🌐 用瀏覽器開啟（新分頁）",
-            url=f"data:application/pdf;base64,{pdf_base64}",
-            use_container_width=True,
-        )
-    with col_download:
-        st.download_button(
-            "📥 下載 PDF 到裝置",
-            data=result.pdf_bytes,
-            file_name=pdf_filename,
-            mime="application/pdf",
-            use_container_width=True,
-        )
-    st.caption(
-        "手機（尤其 iPhone）建議用「用瀏覽器開啟」：會在新分頁顯示 PDF，這個查詢頁面不會不見，"
-        "看完切換回這個分頁即可繼續查下一檔。「下載」則是把檔案直接存到裝置裡。"
+    st.download_button(
+        "📥 下載 PDF 到裝置",
+        data=result.pdf_bytes,
+        file_name=pdf_filename,
+        mime="application/pdf",
+        use_container_width=True,
+    )
+
+    # 分享 / 選擇開啟方式：呼叫瀏覽器原生的 Web Share API，會跳出系統的分享清單
+    # （iPhone 上就是那個可以選 Safari／Chrome／檔案App／傳送給朋友…的選單）。
+    # 桌機瀏覽器大多不支援檔案分享，會自動顯示提示改用下載按鈕，不會卡死。
+    components.html(
+        f"""
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+          <button id="shareBtn" style="width:100%; padding:0.5em 1em; font-size:1em;
+            border-radius:8px; border:1px solid rgba(49,51,63,0.2); background:#fff;
+            cursor:pointer;">📤 選擇開啟方式（分享 / 開啟）</button>
+          <div id="shareMsg" style="margin-top:0.4em; font-size:0.85em; color:#666;"></div>
+        </div>
+        <script>
+        const b64Data = {json.dumps(pdf_base64)};
+        const fileName = {json.dumps(pdf_filename)};
+
+        function b64ToBlob(b64, contentType) {{
+          const byteChars = atob(b64);
+          const byteNumbers = new Array(byteChars.length);
+          for (let i = 0; i < byteChars.length; i++) {{
+            byteNumbers[i] = byteChars.charCodeAt(i);
+          }}
+          return new Blob([new Uint8Array(byteNumbers)], {{type: contentType}});
+        }}
+
+        document.getElementById('shareBtn').addEventListener('click', async () => {{
+          const msg = document.getElementById('shareMsg');
+          msg.innerText = '';
+          try {{
+            const blob = b64ToBlob(b64Data, 'application/pdf');
+            const file = new File([blob], fileName, {{type: 'application/pdf'}});
+            if (navigator.canShare && navigator.canShare({{files: [file]}})) {{
+              await navigator.share({{files: [file], title: fileName}});
+            }} else {{
+              msg.innerText = '此瀏覽器不支援分享功能，請改用「下載 PDF 到裝置」按鈕。';
+            }}
+          }} catch (err) {{
+            if (err && err.name !== 'AbortError') {{
+              msg.innerText = '分享失敗，請改用「下載 PDF 到裝置」按鈕。';
+            }}
+          }}
+        }});
+        </script>
+        """,
+        height=70,
+    )
+
+    st.subheader("PDF 預覽")
+    st.caption("下方為報告內嵌預覽（在本頁面內顯示，不會離開這個查詢頁）；若空白請改用上方下載按鈕。")
+    st.markdown(
+        f'<iframe src="data:application/pdf;base64,{pdf_base64}" width="100%" height="600"'
+        f' style="border:1px solid #d0d0d0;border-radius:6px;"></iframe>',
+        unsafe_allow_html=True,
     )
 
     st.subheader("資料來源狀態")
