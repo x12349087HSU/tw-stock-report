@@ -31,8 +31,16 @@ MOPS_BASE = "https://mopsov.twse.com.tw/mops/web"
 # 快取存活時間（秒）
 CACHE_TTL_STOCK_INFO = 24 * 3600
 CACHE_TTL_PRICE = 4 * 3600
-CACHE_TTL_REVENUE = 12 * 3600
-CACHE_TTL_EPS = 12 * 3600
+# 月營收/EPS/財報明細/資產負債表/現金流量表原本用 12 小時 TTL，是針對「單檔
+# 互動查詢」調的（同一天內查兩次同一檔不用重打）。「篩選器APP」新增的每日
+# 排程批次（scripts/prefetch_fundamentals.py，見該專案 DEVELOPMENT_LOG）一天
+# 要對 150 檔都查一次，12 小時 TTL 在每天固定時間跑的排程下等於「每天都是
+# cache miss」，150 檔 × 5 個 FinMind 資料集会在單次批次內就把 FinMind
+# 匿名額度用完（實測：跑到約 40 檔之後開始出現 402 Payment Required）。
+# 這幾個資料集本來就只有月/季更新頻率，拉長 TTL 沒有犧牲時效性，卻能讓
+# 排程只在資料真的更新的那幾天需要重新打 FinMind，大幅降低額度消耗。
+CACHE_TTL_REVENUE = 7 * 24 * 3600
+CACHE_TTL_EPS = 30 * 24 * 3600
 CACHE_TTL_NEWS = 2 * 3600
 
 NEWS_MIN_ITEMS_BEFORE_INDUSTRY_FALLBACK = 3

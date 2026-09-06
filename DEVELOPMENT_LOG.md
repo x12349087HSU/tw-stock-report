@@ -191,9 +191,63 @@ Cloud 上是否會被額外安全性限制擋下還沒把握（見 4.3，最後�
 
 ---
 
+## 6.1 新增 `generate_summary()`：給「篩選器APP」點股票名字用的簡化摘要
+
+「[篩選器APP](../篩選器APP/)」（均線篩選器手機殼）要求點股票名字能顯示
+基本面資料，體驗要跟現有「點收盤價開 K 線圖」一樣輕量。使用者確認不需要
+完整 PDF 報告（不含股價圖、本益比河流圖、新聞摘要），只要營收/EPS 趨勢
+文字、基本面自檢表、目標價評等。
+
+**做法**：在 `report.py` 新增 `SummaryResult` dataclass 跟
+`generate_summary(user_input)`，完全重用檔案內既有的
+`_revenue_summary()`/`_eps_summary()`/`checklist_engine`/
+`rating_aggregator`/各 provider，**不呼叫** `price_provider`（股價/K線/
+本益比河流圖不需要）跟 `news_aggregator`（新聞摘要不需要，且是
+`generate_report()` 最花時間的部分之一），也不呼叫 `build_pdf`。
+`generate_report()` 本身完全沒動，兩個函式並存，CLI/Streamlit 兩個既有
+介面不受影響。
+
+呼叫端是「篩選器」專案新增的 `scripts/prefetch_fundamentals.py`（不在這個
+資料夾裡，跨專案 `sys.path` 引用這個專案，見「篩選器」DEVELOPMENT_LOG 第
+14.4 節），本機排程對整個均線篩選股票池（150 檔）批次呼叫這個函式，這是
+`tw_stock_report` 第一次被用在「對一大批股票批次查詢」的情境，而不是原本
+設計的「單檔互動查詢」。
+
+## 6.2 批次呼叫暴露的問題：財報類 provider 的快取 TTL 是為單檔查詢調的，
+批次情境下等於每天都重打 FinMind
+
+`prefetch_fundamentals.py` 第一次對 150 檔跑（每檔要查月營收/EPS/損益表/
+資產負債表/現金流量表共 5 個 FinMind 資料集），跑到約 40 檔左右開始出現
+`402 Payment Required`（FinMind 額度用完，不是 IP 封鎖——這台電腦的住宅
+IP 沒有被封鎖，純粹是短時間內請求量太大）；之後在很短時間內又整批重跑
+一次想確認修法，這次同樣還沒成功的股票變成 `403 Forbidden`，看起來是
+連續兩次大量請求觸發了 FinMind 更嚴格的臨時限制。
+
+**根因**：`config.py` 的 `CACHE_TTL_EPS`（月營收/EPS/損益表/資產負債表/
+現金流量表 4 個 provider 共用同一個常數，`providers/fundamentals.py`／
+`balance_sheet.py`／`cash_flow.py`／`eps.py` 都直接引用它）原本是 12
+小時。這個數字是配合「使用者今天手動查了某檔股票，可能同一天內又查一次」
+這種互動情境調的；但排程每天固定時間對全部 150 檔查一次，12 小時 TTL
+在「每天固定時間觸發」的排程下，**等於每次排程執行時全部都是 cache
+miss**（距離上次成功快取一定超過 12 小時）——這些資料集本來就只有月/季
+更新頻率，完全沒有必要每天都重新打一次 FinMind。
+
+**修法**：把 `CACHE_TTL_REVENUE` 從 12 小時拉長到 7 天、`CACHE_TTL_EPS`
+從 12 小時拉長到 30 天。這個改動同時對「篩選器APP」的排程批次跟這個
+專案自己的互動式查詢都有好處——後者原本查兩次同一檔如果剛好跨過 12
+小時邊界就要重打一次 FinMind，現在也不用了，不算是為了批次情境犧牲
+互動情境的時效性（財報資料本來就不是每天變動）。
+
+**教訓**：`CACHE_TTL_*` 這幾個常數的原始設計假設是「同一天內偶爾重複
+查詢同一檔」，如果之後又有新的呼叫端要對**一大批股票**跑批次查詢，
+應該先檢查對應的 TTL 是不是為互動情境調的、批次情境下會不會變成
+「每次執行都是全 cache miss」，而不是等撞到額度限制才發現。
+
 ## 7. 如果要繼續開發，建議先看這幾個檔案
 
-- `report.py` — 所有資料怎麼串起來的，加新功能大概率要碰這裡
+- `report.py` — 所有資料怎麼串起來的，加新功能大概率要碰這裡；`generate_report()`
+  （完整報告，PDF）跟 `generate_summary()`（簡化摘要，給「篩選器APP」用，見
+  第 6.1 節）並存，新增輸出格式時考慮清楚是要擴充哪一個、還是要開第三個
 - `models.py` — 所有資料結構定義在這
 - `providers/base.py` — `safe_provider` 裝飾器，新增 provider 一定要套用這個
 - `pdf/builder.py` — PDF 每個區塊怎麼組出來的

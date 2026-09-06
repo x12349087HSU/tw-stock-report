@@ -10,7 +10,7 @@ from datetime import date, timedelta
 from . import config
 from .analysis import checklist as checklist_engine
 from .identity import IdentityNotFound, resolve
-from .models import EpsRow, ReportData, SourceStatus
+from .models import ChecklistItem, EpsRow, RatingItem, ReportData, SourceStatus, StockIdentity
 from .pdf.builder import build_pdf
 from .providers import balance_sheet as balance_sheet_provider
 from .providers import cash_flow as cash_flow_provider
@@ -27,6 +27,20 @@ class ReportResult:
     pdf_bytes: bytes
     pdf_path: str
     data: ReportData
+
+
+@dataclass
+class SummaryResult:
+    """給「篩選器APP」點股票名字用的簡化摘要：只含文字摘要跟自檢表結果，
+    不含股價圖／本益比河流圖／新聞摘要／PDF，維持輕量（不呼叫 price_provider
+    跟 news_aggregator，這兩個是 generate_report() 裡最花時間的部分）。"""
+
+    identity: StockIdentity
+    generated_at: date
+    revenue_summary_text: str
+    eps_summary_text: str
+    checklist_items: list[ChecklistItem]
+    ratings: list[RatingItem]
 
 
 def _revenue_summary(rows) -> str:
@@ -203,3 +217,36 @@ def generate_report(user_input: str) -> ReportResult:
     pdf_path.write_bytes(pdf_bytes)
 
     return ReportResult(pdf_bytes=pdf_bytes, pdf_path=str(pdf_path), data=data)
+
+
+def generate_summary(user_input: str) -> SummaryResult:
+    """簡化版報告：給「篩選器APP」點股票名字用，只算文字摘要跟自檢表，
+    不抓股價／新聞、不產 PDF。單一資料源失敗時對應欄位留空/空清單，
+    不中止整體（跟 generate_report() 的容錯原則一致）。"""
+    identity = resolve(user_input)
+
+    revenue_result = revenue_provider.get_monthly_revenue(identity, months=24)
+    revenue_summary_text = _revenue_summary(revenue_result.data) if revenue_result.ok else ""
+
+    eps_result = eps_provider.get_eps_history(identity, years_back=3)
+    eps_summary_text = _eps_summary(eps_result.data) if eps_result.ok else ""
+
+    fundamentals_result = fundamentals_provider.get_quarterly_financials(identity.stock_id, years_back=3)
+    balance_result = balance_sheet_provider.get_quarterly_balance_sheet(identity.stock_id, years_back=3)
+    cashflow_result = cash_flow_provider.get_quarterly_cash_flow(identity.stock_id, years_back=3)
+    checklist_items = checklist_engine.evaluate_checklist(
+        fundamentals_result.data or [],
+        balance_result.data or [],
+        cashflow_result.data or [],
+    )
+
+    ratings, _rating_errors = rating_aggregator.gather_ratings(identity)
+
+    return SummaryResult(
+        identity=identity,
+        generated_at=date.today(),
+        revenue_summary_text=revenue_summary_text,
+        eps_summary_text=eps_summary_text,
+        checklist_items=checklist_items,
+        ratings=ratings,
+    )
